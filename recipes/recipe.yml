@@ -12,9 +12,10 @@ image-version: 43 # latest is also supported if you want new updates ASAP
 # module configuration, executed in order
 # you can include multiple instances of the same module
 modules:
-- type: rpm-ostree
+  - type: rpm-ostree
     copr:
       - rsncra/rtl88x2bu-kmod
     install:
       - rtl88x2bu-kmod
+
   - type: signing
