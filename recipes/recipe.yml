@@ -13,9 +13,53 @@ image-version: 43 # latest is also supported if you want new updates ASAP
 # you can include multiple instances of the same module
 modules:
   - type: rpm-ostree
-    repos:
-      - https://copr.fedorainfracloud.org/coprs/rsncra/rtl88x2bu-kmod/repo/fedora-43/rsncra-rtl88x2bu-kmod-fedora-43.repo
     install:
-      - rtl88x2bu-kmod
+      - kernel-devel
+      - kernel-headers
+      - gcc
+      - make
 
+  # 2. Compile and sign the driver manually
+  - type: script
+    snippets:
+      - |
+        set -e
+        echo "Building the RTL88x2BU driver..."
+        
+        # Grab the exact kernel version the container is currently using
+        KVER=$(ls /usr/lib/modules | grep -v rescue | head -n 1)
+        
+        # Download and extract the raw driver source code
+        curl -LO https://github.com/morrownr/88x2bu-20210702/archive/refs/heads/main.tar.gz
+        tar -xzf main.tar.gz
+        cd 88x2bu-20210702-main
+        
+        # Compile it strictly against the container's kernel
+        make KVER=$KVER -j$(nproc)
+        
+        # Sign the module with your personal MOK
+        if [ -f /etc/pki/akmods/private/private_key.priv ]; then
+          echo "Signing the module with your personal MOK..."
+          /usr/src/kernels/$KVER/scripts/sign-file sha256 /etc/pki/akmods/private/private_key.priv /etc/pki/akmods/certs/public_key.der 88x2bu.ko
+        else
+          echo "WARNING: No MOK found in /etc/pki/akmods/private/. The module will be unsigned!"
+        fi
+        
+        # Install the newly signed driver
+        echo "Installing the compiled module..."
+        mkdir -p /usr/lib/modules/$KVER/extra
+        cp 88x2bu.ko /usr/lib/modules/$KVER/extra/
+        depmod -a $KVER
+        
+        # Clean up the build workspace
+        cd ..
+        rm -rf 88x2bu-20210702-main main.tar.gz
+
+  # 3. Uninstall the compilers to keep Secureblue hardened
+  - type: rpm-ostree
+    uninstall:
+      - kernel-devel
+      - kernel-headers
+      - gcc
+      - make
   - type: signing
